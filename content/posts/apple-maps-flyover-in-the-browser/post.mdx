@@ -1,0 +1,605 @@
+import { ImageTabs } from "./ImageTabs";
+import { FileAnatomy } from "./FileAnatomy";
+import { Timeline } from "./Timeline";
+import { SizeReader } from "./SizeReader";
+import { FrameSplit } from "./FrameSplit";
+import { BitOrder } from "./BitOrder";
+import { EventPlane } from "./EventPlane";
+import { Footprint } from "./Footprint";
+
+export const metadata = {
+  title: "Apple Maps Flyover in a Browser",
+  date: "2026-11-12",
+  description:
+    "Apple Maps' new 3D city tiles carry splats alongside a textured mesh. This is how I reverse-engineered the format, checked my decoder byte for byte against Apple's own reader, and drew the result in a browser.",
+};
+
+export const IMG = "/posts/apple-maps-flyover-in-the-browser";
+
+<Demo
+  title="St James's Park, London"
+  caption="One camera, three pictures: the textured mesh alone, the splats alone, and both together. Drawn by my own viewer from decoded tiles, not by Apple Maps, with splats in my soft-triangle footprint (a hypothesis; see Rendering)."
+>
+  <ImageTabs
+    items={[
+      {
+        label: "Mesh only",
+        src: `${IMG}/park-mesh.webp`,
+        alt: "St James's Park drawn from the textured mesh only: buildings are solid, trees are flat dark patches on the ground.",
+        note: "The mesh carries the buildings, the ground and the water. Trees are mostly a picture painted onto the ground.",
+      },
+      {
+        label: "Splats only",
+        src: `${IMG}/park-splats.webp`,
+        alt: "The same view drawn from splats only: tree canopies float in space, with thin traces along building edges.",
+        note: "The splats are almost all trees, plus thin details along roof lines and walls.",
+      },
+      {
+        label: "Both",
+        src: `${IMG}/park-both.webp`,
+        alt: "The same view with mesh and splats together: a full 3D park with trees in front of the city.",
+        note: "Together they make the picture. Neither half looks right on its own.",
+      },
+    ]}
+  />
+</Demo>
+
+When Apple Maps shows a city in 3D, the trees no longer look like green
+boxes. They are soft, round and a little fuzzy at the edges. That softness
+comes from a new kind of map tile. Apple's own code calls the things in it
+**splats**, and every tile also carries a **textured mesh** underneath them.
+
+I wanted to know how those tiles work, and I could not find any public
+documentation of the format. So I spent the last two months taking it apart.
+This post is about how that went: the wrong turns, the thing that finally
+worked, how the decoder is put together, and how I checked it.
+
+I am not releasing the code or a working demo yet. Everything below is
+written so that you can follow the technique, not so that you can download
+Apple's data.
+
+<Callout label="Not Gaussian">
+  You may have read that Maps now uses "Gaussian splats". What Apple's shaders
+  actually draw is one fixed **triangle** per splat, with an opacity that fades
+  towards the edges. There is no Gaussian kernel and no stretched quad. More
+  on that in [Rendering](#rendering).
+</Callout>
+
+## The short version
+
+- Each tile file has **three sections**: splats, a textured mesh, and an
+  empty third one.
+- The splat section is a chain of small compressed **planes**, one per byte
+  of each output value. They are compressed with explicit Huffman tables,
+  run-style "events" and a few delta and cache tricks.
+- The mesh section is a compressed triangle mesh in the format of a VectorKit
+  routine called `_trico_mesh_decompress`, plus three ordinary HEIF images.
+- My decoder reproduces the splat arrays of Apple's own reader **byte for
+  byte on all 40 inputs that have splats**. It reproduces the mesh
+  positions, texture coordinates and index arrays byte for byte on all 41.
+  62 of the 244,883 normal values differ, each by the smallest possible
+  float step. I explain why below.
+- The rendering in my viewer is part verified and part guess. I label which
+  is which.
+
+## How I got here
+
+The project log has over 400 entries. Most of them are the first week. Click
+through the milestones; the hollow dots are directions I later threw away.
+
+<Demo title="Two months, nine milestones">
+  <Timeline />
+</Demo>
+
+The turning point was the fourth milestone. For the first week I tried to
+guess the format from the bytes alone, which is the classic approach, and it
+produced hundreds of careful experiments with no result. What worked was
+the opposite: find the exact build of Apple's map framework (VectorKit) that
+reads these tiles, read what its code does, and capture one real input and
+its real output on my own Mac. From then on every idea could be checked
+against Apple's own answer, not against my opinion of what looked plausible.
+
+The tiles themselves come from Apple Maps services. I started with ten
+neighbouring London tiles, then had 40 tiles from five cities plus one
+captured reader input: the **41 inputs** that every number in this post
+refers to, unless I say otherwise.
+
+## What is in a tile
+
+A tile file starts with a 4-byte magic number (`3d 96 59 2e`) and a version
+number (2). After a few header bytes come three top-level sections. Each
+section is a tag byte plus a length, and the three lengths account for every
+byte of the file. Inside a section is a chain of (tag, length, body) fields.
+The lengths use LEB128, the same variable-length integer used by protobuf and
+WebAssembly.
+
+<Demo
+  title="Where the bytes go"
+  caption="One Brooklyn tile, chosen because its mesh share is the median of the 41 inputs. Hover or tap a block. The ranges are minimum to maximum across all 41."
+>
+  <FileAnatomy />
+</Demo>
+
+The surprise for me was the second section. I had spotted the embedded HEIF
+images in the first week, but I treated everything after the splat records as
+side data and never decoded it. Seven weeks in, it turned out to be a section
+of its own: a compressed textured mesh plus its images. The splats are usually
+the **smaller** part; the mesh section is 39–96% of each file.
+
+## The decoder, step by step
+
+The splat producer (section 1, field 3) is where almost all of the hard work
+was. It has two **components**:
+
+- **Component 0** holds the geometry: three points per splat, as integers
+  that become `float32` metres.
+- **Component 1** holds eight attribute values per splat: opacity, colour,
+  roughness, a normal and a specular weight.
+
+Both components go through the same machinery, so I will describe it once,
+from the smallest piece up.
+
+### Sizes
+
+Lengths and counts inside the producer use a different integer from the
+LEB128 of the outer sections. The number of bytes is given by the number of
+trailing one bits in the first byte. Pick an example:
+
+<Demo title="The size integer">
+  <SizeReader />
+</Demo>
+
+The first example is a real value from the captured input: `d3 7e 03` is a
+component body of 28,634 bytes. A control byte of `ff` means "the next
+eight bytes are a 64-bit length". This tiny reader mattered more than it
+looks: my early notes forgot the final shift and recorded the intermediate
+value instead.
+
+### Frames, and the four bytes I got wrong
+
+Every compressed stream sits in a **frame**. A frame starts with the marker
+`00 00 00 24`, then two lengths, then a 4-byte "core" marker that says how
+the payload is coded. `02 00 00 61` means Huffman-coded and `02 00 00 e1`
+means stored as raw bytes. The first region holds the core marker and the
+Huffman table, the second holds the coded data.
+
+My early scanner found these frames on day one and sliced them into two
+payloads I called **A** and **B**. It started A at offset 20. The native code
+starts the first region at offset 16, because its length includes the core
+marker. Switch between the two readings:
+
+<Demo
+  title="One frame, two readings"
+  caption="Each cell is 4 bytes. The two markers are real; lengths, table and data are placeholders. Being four bytes off sent every later hypothesis in the wrong direction."
+>
+  <FrameSplit />
+</Demo>
+
+Two whole families of hypotheses came out of those four bytes:
+
+- **A as a codebook.** Under the shifted slice, the start of A looked like
+  half-precision floats, and its first 64 words were all different from each
+  other. I spent days on "A is a fixed 64-entry table of values". It was the
+  packed header of a Huffman table.
+- **B as a sparse spatial field.** B seemed to end in two small numbers, W
+  and H, so the obvious reading was that B encodes which cells of a W × H
+  grid are occupied: a sparse spatial field. I tested Rice, Golomb and Elias
+  gap codes, whole-stream and row-by-row run lengths, and static, adaptive
+  and spatial-context arithmetic coding, thousands of variants in all. Every
+  one had zero exact fits. W and H were never a grid. They are the first two
+  size integers of the **next** plane: its event count and the length of its
+  first frame.
+
+The oddly framed **E1** records from the first day turned out to be bare raw
+cores: the marker `02 00 00 e1` followed directly by stored bytes, with no
+wrapper and no compression. I had been trying to read packed 3-bit units out
+of them.
+
+### Huffman, with a twist in the bit order
+
+The tables are explicit. Each one starts with an entry count minus one (8 or
+16 bits), a 3-bit width for the code lengths, and then the code lengths,
+codewords and symbol values, some written as deltas. In the 108 streams I
+decoded first (16-bit streams that turned out to be the colour channels), the
+tables have **101 or 102 entries**, not the 64 that the six-bit theory needed.
+
+The detail that makes or breaks a decoder is the bit order. Bits are read
+**most significant bit first within 32-bit words, and each word is stored
+little-endian**. Read the bytes in file order and you get nonsense, but not
+obvious nonsense:
+
+<Demo title="Reading the same bytes two ways">
+  <BitOrder />
+</Demo>
+
+That last point is the lesson of the first week in miniature. Almost any
+bit order "decodes" to something. The only reliable checks are an exact
+round trip (decode, re-encode, and get the identical bytes back, padding
+included) and a count that comes from somewhere else. For the Huffman
+streams both checks exist, and both pass on all 108 streams I tested them on.
+
+### Planes and events
+
+The output of a component is a table: one row per splat, a fixed number of
+bytes per row. The producer stores it **column by column**: one compressed
+**plane** per byte lane. So "byte 2 of value 5 of every splat" is one plane.
+
+Most planes do not store a value for every row. They store a short list of
+**events** plus a **flag frame** with one bit per row after the first. Row
+0 takes the first event. A row whose flag is 1 takes the next event, and
+the other rows are filled by a rule that depends on the plane's **kind**:
+
+<Demo
+  title="One plane, twelve rows"
+  caption="Toy values, real rules. Kind 4 repeats; kind 5 keeps a cache keyed by the previous value. The 8-bit kinds 1 and 2 work the same way on single bytes."
+>
+  <EventPlane />
+</Demo>
+
+The rule "number of events = number of flags set + 1" was my first
+**independent count**. The flag frame and the event frame are separate
+compressed streams, so if both decode correctly, the counts have to agree.
+They agree on all 108 tested pairs. That is very hard to achieve by
+accident, and it is what finally made the grammar trustworthy.
+
+There are seven plane kinds in all:
+
+| Kind | What it stores |
+| ---- | -------------- |
+| 0 | one literal byte per row |
+| 1 | repeat events (8-bit) |
+| 2 | transitions through a previous-byte cache (8-bit) |
+| 3 | deltas: a value count, a flag frame, a value frame |
+| 4 | repeat events, 16-bit, written into two byte lanes |
+| 5 | transition cache, 16-bit |
+| 6 | a selector frame plus one 16-bit value per row, as signed deltas |
+
+### Components
+
+One more layer sits around the planes. VectorKit reads each component with
+a routine called `_byet_decompress`, twice: once for a small table of
+offsets, once for the body. If the stored data is exactly the expected size,
+it is copied as is. Otherwise a tag byte selects a mask expansion or the
+plane directory described above. The same routine decodes every lane of the
+mesh, so getting it right once paid off twice.
+
+Component 0's body is a table of three 32-bit words per point, three points
+per splat. Component 1's body is eight 32-bit words per splat. A final step
+turns the integers into floats with offsets and scales from the producer.
+The result is two flat arrays, which I have called `stream12` and `stream8`
+since early in the project:
+
+| Array | Per splat | Reading |
+| ----- | --------- | ------- |
+| stream12 | 9 floats | three corner points, (North, East, Down) metres in the tile's frame |
+| stream8 col 0 | 1 float | opacity factor |
+| stream8 cols 1–3 | 3 floats | colour, sRGB, drawn unlit |
+| stream8 col 4 | 1 float | roughness for an optional specular highlight |
+| stream8 cols 5–6 | 2 floats | a normal, octahedral encoding |
+| stream8 col 7 | 1 float | specular weight |
+
+The array layouts are verified byte for byte. The **readings** in the right
+column come from the shaders and from tests on the data; the next sections
+say how strong each one is.
+
+## The mesh
+
+Section 2 holds the same tile frame again, then a compressed mesh, then
+image "wrappers" around complete HEIF files. The mesh format has a magic
+number (`0x246621e1`) and version 3, and it is built from well-known ideas:
+
+- **Connectivity** is coded in the style of Edgebreaker. Most triangles
+  cost one bit ("the common case"), the rest get a 2-bit code, and decoding
+  runs backwards over the symbols to rebuild which corners face each other.
+- **Positions** are integers on a grid of 0.04 m (or a power of two times
+  that). They are predicted while walking the triangles breadth first,
+  mostly with the parallelogram rule, so only small corrections are stored.
+- **Texture coordinates** use the same prediction on a quarter-texel grid,
+  with seam masks where the texture is cut. They index into a texture
+  **atlas**.
+- **Normals**, when present, are two quantised angles on a 2° grid.
+
+The three images are a colour atlas and two single-channel maps at half
+size. The grey maps behave like specular and roughness maps; that reading is
+strongly supported, but one link in the evidence chain is missing.
+
+<figure className="my-10 sm:-mx-6">
+  <div className="grid grid-cols-[2fr_1fr] gap-3 rounded-lg border border-rule bg-surface p-5">
+    <img src={`${IMG}/atlas-london-colour.webp`} alt="Colour atlas of one London tile: a street junction from above, with building patches packed around it." className="h-full w-full rounded object-cover" />
+    <div className="grid grid-rows-2 gap-3">
+      <img src={`${IMG}/atlas-london-specular.webp`} alt="The first grey map of the same tile: bright roads and roofs, dark trees and shadows." className="h-full w-full rounded object-cover" />
+      <img src={`${IMG}/atlas-london-roughness.webp`} alt="The second grey map of the same tile, with softer contrast." className="h-full w-full rounded object-cover" />
+    </div>
+  </div>
+  <figcaption className="mt-3 text-sm leading-relaxed text-muted sm:px-6">
+    The three images of one London tile. Left: the colour atlas (544 × 608).
+    Right: the two half-size grey maps, most likely specular (top) and
+    roughness (bottom). Downscaled.
+  </figcaption>
+</figure>
+
+A low-zoom tile shows the atlas idea better. Here a whole neighbourhood of
+Madrid has been cut into thousands of small patches of roofs and walls and
+packed into one square:
+
+<figure className="my-10 sm:-mx-6">
+  <div className="rounded-lg border border-rule bg-surface p-5">
+    <img src={`${IMG}/atlas-madrid-colour.webp`} alt="Colour atlas of one Madrid tile: one large patch of streets at top left, then thousands of small packed building patches." className="mx-auto w-full max-w-[480px] rounded" />
+  </div>
+  <figcaption className="mt-3 text-sm leading-relaxed text-muted sm:px-6">
+    The colour atlas of one zoom-16 Madrid tile (1184 × 1184, downscaled). The
+    large patch at top left is ground; everything else is roof and façade
+    pieces.
+  </figcaption>
+</figure>
+
+Some low-zoom tiles that I downloaded later do things none of the 41 inputs
+do: several materials (one atlas each), an extra 1-bit flag per vertex, and
+a mesh with its own frame. They all decode, but their meaning is partly
+unknown and Apple's reader has never been run on them.
+
+## Putting tiles in the right place
+
+Every tile header holds a 3 × 3 rotation and a position, both as 64-bit
+floats. The position is the centre of the tile's Web Mercator square, in
+Earth-centred (ECEF) coordinates at height zero. On the first ten tiles it
+matched my own computation of the tile centres to within 2.3 nanometres. The rotation's columns are the local North, East
+and Down directions at that point. So a decoded point `p` lands on the globe
+at `R·p + T`, with nothing fitted per tile.
+
+I tested the axis order by placing neighbouring tiles and measuring how
+smoothly features continue across the seams. The North/East/Down reading
+beats the swapped one by a factor of 4 to 20. My first viewer used a fixed
+grid spacing instead and quietly transposed every tile. It still looked
+roughly continuous, which taught me that "looks continuous" is a weak test.
+
+## How I checked it
+
+This is the part I care about most. A decoder that produces pretty pictures
+can still be wrong, and in the first week I watched plausible models fail
+again and again. So the rules were strict from the start:
+
+- **Every pass/fail criterion is written down before running the test**,
+  and is not changed after seeing the result. When I did loosen one, the
+  report says so.
+- **No per-tile constants.** If a model needs a different number for each
+  tile, it is a fit, not a decoder.
+- **Exact byte accounting.** Every byte of every frame must be consumed,
+  padding must be zero, and counts must match. Anything outside the known
+  grammar fails with a named error. It is never guessed.
+- **Stop after two inconclusive tries** of the same idea, and look for the
+  missing observation instead.
+
+The evidence comes in layers, from weakest to strongest.
+
+**1. Round trips.** Each of the 108 Huffman streams in the original corpus
+decodes and re-encodes to the identical bytes, table and padding included.
+Separately, the flag population plus one equals the event count in all 108.
+
+**2. One captured sample.** On my Mac I captured one real input to VectorKit's
+reader (303,286 bytes) and its two output arrays: 127,328 bytes of `stream8`
+and 143,244 bytes of `stream12`. My decoder reproduces both byte for byte.
+In one audit I ran the reconstruction with file reads blocked, so it could
+not peek at the answer.
+
+**3. Apple's reader on every input.** This is the strongest test. I ran the
+same build of Apple's reader on all 41 inputs on my Mac and saved what it
+produced. The criteria were written into a plan before the results came back.
+
+| What | Result |
+| ---- | ------ |
+| Splat arrays, 40 inputs with splats | byte-identical on 40 of 40 |
+| The one input without splats | Apple's reader also reports 0 splats |
+| Mesh positions, UVs, three index arrays | byte-identical on 41 of 41 |
+| Mesh normals | 244,821 of 244,883 values identical |
+
+**The 62 normals.** They all differ in the same way: only the y component,
+always by exactly one unit in the last place of a 32-bit float. They come
+from just **two** of the stored angle codes, and every occurrence of those
+two codes differs, in every tile, while no other code ever does. In both
+cases the true sine lies within a thousandth of a float step of a rounding
+tie. The most likely explanation is that Apple's float sine is very
+accurate but not correctly rounded, and these two near-ties round the other
+way. I could special-case the two codes, but that would be a fitted
+constant, so I left it.
+
+**4. Damaged inputs.** A decoder must also say no. There are two kinds of
+test here:
+
+- **Structural damage must be refused.** A truncated producer, a group count
+  off by one, a removed marker, a wrong mesh magic number and a wrong mesh
+  version each have to fail with a named error. They all do.
+- **Random damage must never crash.** I also make 66 damaged copies of one
+  tile: five truncations and 61 single flipped bytes spread through the file.
+  Here the rule is weaker but still strict: no crash, no unnamed error, and
+  the Python and Rust decoders must reach the same outcome on every copy.
+  They do. Many flips land in places the format has no check for (the HEIF
+  images are passed through as they are), so those copies still decode.
+
+**5. Two independent implementations.** The Python decoder is the
+reference. A Rust port, written function by function, must produce identical
+splat and mesh output, and the same class of error, on every input: the 41,
+the 66 damaged copies, and all 7,265 tiles in my local cache as of November
+12. There are 0 mismatches.
+
+**6. Renders.** Last and weakest: features stay coherent inside each tile,
+walls are vertical from the side, and roads and tree lines continue across
+tile borders when the tiles are placed by their headers alone.
+
+<Callout label="What is not verified">
+  The thousands of extra tiles I downloaded later decode under the same
+  rules with exact byte accounting, but Apple's reader has never been run on
+  them. For those tiles, "it decodes" is all I can honestly say.
+</Callout>
+
+## Rendering
+
+For the drawing side I read Apple's splat shaders from the same build. They
+settle more than I expected:
+
+- Each splat is **one triangle** made from its three stored points. The
+  vertex shader does not move or enlarge it.
+- Colour is used **unlit**; there is no diffuse lighting term. An optional
+  specular highlight uses the roughness, normal and specular weight.
+- Opacity inside the triangle is
+  `min(0.99, 28 · col0 · (b0 · b1 · b2)^1.5)`, where b0, b1 and b2 are
+  the barycentric coordinates. The 28 and the 1.5 arrive with each tile's
+  data, not as shader constants, and all 41 inputs use those values.
+- Splats are composited front to back, with colour averaged in sRGB and
+  converted to linear light afterwards.
+
+The mesh shader is simpler still: it samples the colour atlas, unlit. It has
+optional colour adjustment and specular branches. Unless a debug setting is
+turned on, VectorKit drops the mesh normals and the two grey maps before they
+reach the shader at all.
+
+<Demo
+  title="London Eye"
+  caption="Thin structures show what each half is for. The mesh has no wheel at all, only its rim painted onto the water. The wheel, the trees, the lamp posts and the bridge cables are splats, drawn here in my soft-triangle footprint (a hypothesis; see below)."
+>
+  <ImageTabs
+    items={[
+      {
+        label: "Mesh only",
+        src: `${IMG}/eye-mesh.webp`,
+        alt: "London Eye area drawn from the mesh only: the wheel is missing, its rim appears as a dark ring on the river.",
+      },
+      {
+        label: "Splats only",
+        src: `${IMG}/eye-splats.webp`,
+        alt: "The same view from splats only: the wheel, trees, lamp posts and bridge cables float against the sky.",
+      },
+      {
+        label: "Both",
+        src: `${IMG}/eye-both.webp`,
+        alt: "The same view with mesh and splats together.",
+      },
+    ]}
+  />
+</Demo>
+
+Then there is the part I cannot settle. With Apple's formula exactly as read,
+trees come out **much fainter** than Maps shows them on my phone and Mac.
+The centre of a splat only reaches about 20% of its own opacity value:
+
+<Demo
+  title="Opacity across one splat"
+  caption="Pure maths, no Apple data. The checkerboard shows through where the splat is transparent. At about 5× boost, Apple's centre opacity matches the soft triangle's."
+>
+  <Footprint />
+</Demo>
+
+<Demo
+  title="The same trees, two footprints"
+  caption="Apple's formula at 1× (as read from the shader) against my viewer's 'Soft tri' default. With the formula as read, most of what you see as a tree is a shadow painted into the mesh texture."
+>
+  <ImageTabs
+    ratio="1280 / 900"
+    initial={0}
+    items={[
+      {
+        label: "Apple 1×",
+        src: `${IMG}/footprint-apple-1x.webp`,
+        alt: "Trees between a brick building and a church, drawn with Apple's formula at 1×: the canopies are faint and see-through.",
+      },
+      {
+        label: "Soft tri?",
+        src: `${IMG}/footprint-soft-tri.webp`,
+        alt: "The same view with the soft-triangle footprint: full, dense tree canopies.",
+      },
+    ]}
+  />
+</Demo>
+
+So my viewer's default footprint is a **soft triangle**: opacity falls off
+linearly from the centre to the edges. That is not Apple's formula. I chose
+it because it looks most like Maps by eye. Matching the phone needs
+roughly 4–12× more opacity than the formula gives, and I do not know why. It could be a different runtime constant, a different code path, or
+something in how the passes are combined that I have not traced yet. Until I
+know, the soft triangle stays labelled as a guess.
+
+## Known and unknown
+
+| Status | Finding |
+| --- | --- |
+| **Verified** | File layout: three sections that account for every byte. |
+| **Verified** | Splat arrays byte-identical to Apple's reader on 40 of 40 inputs with splats. |
+| **Verified** | Mesh positions, UVs and index arrays byte-identical on 41 of 41. |
+| **Verified** | Huffman grammar: 108 of 108 exact round trips; event counts independently confirmed. |
+| **Verified** | Header frame: North/East/Down rotation plus the ECEF tile centre. |
+| **Verified** | What the splat shader computes: one fixed triangle, the opacity formula, unlit colour. |
+| **Not exact** | 62 of 244,883 mesh normals, 1 ULP each, from two angle codes (likely Apple's float sine). |
+| **Strongly supported** | Three corner points in N/E/D metres; octahedral normals; the grey maps are specular and roughness. |
+| **Hypothesis** | Soft-triangle footprint in my viewer, and the meaning of a per-material byte in low-zoom meshes (perhaps two blend modes). |
+| **Unknown** | Apple's runtime settings: which optional shader branches are on, the light values, colour adjustment, who sorts the splats. |
+| **Unknown** | Why Apple's formula gives fainter trees than Maps shows. |
+| **Unknown** | Seven extra doubles in the mesh frame, a 16-byte field in section 1, the per-vertex flags of some low-zoom meshes. |
+| **Not exercised** | A few decoder branches no tile uses (for example a 16-bit key path). They fail with a named error. |
+
+## Things that did not work
+
+Negative results are half of this project, so here they are in one place:
+
+- **Six-bit codes.** One stream was exactly 3,168 × 6 bits and used all 64
+  six-bit values. Literal six-bit, escape and canonical 6/7-bit models gave
+  zero exact hits. It was a coincidence of lengths.
+- **A as a 64-entry codebook.** Half-float-looking values and 64 unique
+  words. It was the packed header of a Huffman table, read four bytes off.
+- **B as a sparse W × H grid.** Rice (576 configurations), Golomb (1,024),
+  Elias gamma and delta, whole-stream and row-reset run lengths (over 2,400),
+  static, adaptive order-0 and order-1, and left/up context arithmetic
+  coding: zero exact fits. The arithmetic decoders needed millions of
+  invented zero bits past the end of the data to produce their output
+  counts, a sure sign of a wrong model.
+- **Standard containers.** No LZFSE or other known wrapper markers, and
+  public decoders for Apple's older 3D format did not apply.
+- **Fixed tile spacing.** Placing tiles on a grid looked continuous and was
+  wrong; every tile was transposed.
+- **"Smallest barycentric" opacity.** My guess for the splat footprint before
+  I read the shader. The shader uses the product of all three.
+
+The common thread: every one of these models was tested carefully, and
+every test was honest, but none of them had an **independent** count or
+boundary to check against. Without one, a careful sweep just measures how
+many wrong models there are.
+
+## Reproducing it
+
+The code is not public yet. When it is, it will contain no tiles; you will
+need to supply your own. On your own tiles, the decoder is two calls:
+
+```python
+from style98_decode import decode_tile
+from style98_mesh import decode_mesh
+
+data = open("tile.bin", "rb").read()
+splats = decode_tile(data)  # stream12: 9 floats per splat, stream8: 8 floats per splat
+mesh = decode_mesh(data)    # positions, UVs, normals, per-corner indices, materials
+```
+
+Anything outside the grammar it knows raises a named `UnsupportedBranch`
+instead of returning a guess.
+
+The checks quoted in this post are my regression scripts. They run against
+my own fixed set of inputs and refuse to start if any of those files has
+changed, so they will not run as they are on someone else's tiles:
+
+```powershell
+# Splat decoder: corpus accounting, damaged inputs, and header-placed renders
+python -B experiments/2026-11-08_general_decoder_check.py --render tmp/render
+
+# Huffman grammar: exact re-encoding of every selected stream
+python -B experiments/2026-10-06_native_huffman_bridge.py --summary-only
+
+# Mesh decoder
+python -B experiments/2026-11-09_trico_port_check.py
+```
+
+---
+
+<Callout label="Disclaimer">
+  This is independent research on data and software I obtained lawfully and
+  ran on my own devices. It is not affiliated with or endorsed by Apple. When
+  the code is published, it will contain no Apple data, credentials or code,
+  and you will need to supply your own tiles.
+</Callout>

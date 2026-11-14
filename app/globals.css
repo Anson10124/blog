@@ -1,0 +1,306 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/* Colours. Change these six values to re-skin the whole site.         */
+/* ------------------------------------------------------------------ */
+:root {
+  --paper: #f5f1e8; /* page background */
+  --surface: #fbf9f3; /* cards, demos, code blocks */
+  --ink: #1d1a16; /* main text */
+  --muted: #7a7266; /* secondary text */
+  --rule: #ddd5c5; /* hairlines and borders */
+  --accent: #cf4526; /* links, highlights */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #141210;
+    --surface: #1c1916;
+    --ink: #ebe5d8;
+    --muted: #91887a;
+    --rule: #322d27;
+    --accent: #ff7350;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-sans-body), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-display), ui-serif, Georgia, serif;
+}
+
+html {
+  color-scheme: light dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent) 28%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* Small uppercase label used for dates, captions and section markers. */
+@utility label-mono {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Small sans label for interactive demos: normal case, no mono. */
+@utility label {
+  font-size: 0.8rem;
+  letter-spacing: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Article typography: everything written in markdown inside a post.   */
+/* ------------------------------------------------------------------ */
+.prose {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+}
+
+.prose > * + * {
+  margin-top: 1.5rem;
+}
+
+.prose h2,
+.prose h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  scroll-margin-top: 2rem;
+}
+
+.prose h2 {
+  font-size: 2.25rem;
+  margin-top: 4.5rem;
+}
+
+.prose h3 {
+  font-size: 1.6rem;
+  margin-top: 3rem;
+}
+
+.prose a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.prose a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.prose strong {
+  font-weight: 600;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.4rem;
+}
+
+.prose ul {
+  list-style: disc;
+}
+
+.prose ol {
+  list-style: decimal;
+}
+
+.prose li + li {
+  margin-top: 0.5rem;
+}
+
+.prose li::marker {
+  color: var(--muted);
+}
+
+.prose blockquote {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1.3;
+  font-style: italic;
+  padding-left: 1.25rem;
+  border-left: 2px solid var(--accent);
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin-block: 3.5rem;
+}
+
+.prose img {
+  border-radius: 6px;
+}
+
+.prose table {
+  width: 100%;
+  font-size: 0.95rem;
+  border-collapse: collapse;
+}
+
+.prose th {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--muted);
+}
+
+.prose th,
+.prose td {
+  padding: 0.6rem 0.75rem 0.6rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* Inline code */
+.prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  padding: 0.15em 0.4em;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+/* Code blocks (highlighted at build time by rehype-pretty-code) */
+.prose pre {
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  line-height: 1.7;
+  padding: 1.1rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.prose pre > code {
+  display: grid;
+  min-width: max-content;
+}
+
+.prose pre [data-line] {
+  padding-inline: 1.25rem;
+}
+
+.prose pre [data-highlighted-line] {
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.prose pre span[style] {
+  color: var(--shiki-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  .prose pre span[style] {
+    color: var(--shiki-dark);
+  }
+}
+
+/* ```ts title="file.ts" puts a file name above the block */
+.prose [data-rehype-pretty-code-title] {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 0.55rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: var(--surface);
+}
+
+.prose [data-rehype-pretty-code-title] + pre {
+  border-radius: 0 0 6px 6px;
+}
+
+/* Footnotes (markdown [^1] syntax) */
+.prose .footnotes {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.prose .footnotes h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* Range sliders used by the interactive demos */
+.slider {
+  appearance: none;
+  width: 100%;
+  height: 1.5rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--rule);
+}
+
+.slider::-moz-range-track {
+  height: 2px;
+  background: var(--rule);
+}
+
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: calc(-0.5rem + 1px);
+  border-radius: 999px;
+  border: 2px solid var(--paper);
+  background: var(--accent);
+}
+
+.slider::-moz-range-thumb {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 999px;
+  border: 2px solid var(--paper);
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
