@@ -30,6 +30,10 @@ export async function generateMetadata({
       publishedTime: post.date,
       authors: [site.author],
     },
+    // giscus writes this link into the GitHub Discussion it creates for the
+    // post. Without it giscus uses whatever URL the page was open on, which
+    // is localhost when the first comment is made from local dev.
+    other: { "giscus:backlink": `${site.url}/posts/${post.slug}` },
   };
 }
 
