@@ -47,13 +47,6 @@ export function Comments() {
 
   return (
     <section aria-labelledby="comments-heading" className="mt-24">
-      <h2
-        id="comments-heading"
-        className="label-mono mb-6 border-t border-rule pt-6 text-muted"
-      >
-        Comments
-      </h2>
-
       {configured ? (
         <div ref={container} className="giscus" />
       ) : (
