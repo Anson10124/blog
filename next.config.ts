@@ -7,6 +7,16 @@ const nextConfig: NextConfig = {
   experimental: {
     agentFeedback: true,
   },
+  // The giscus comment box (an iframe on giscus.app) loads our theme
+  // stylesheet cross-origin, which the browser only allows with this header.
+  async headers() {
+    return [
+      {
+        source: "/giscus.css",
+        headers: [{ key: "Access-Control-Allow-Origin", value: "*" }],
+      },
+    ];
+  },
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

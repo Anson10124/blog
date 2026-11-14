@@ -1,0 +1,124 @@
+/*
+ * giscus theme matching the blog. giscus runs in an iframe, so it cannot see
+ * the site's own stylesheet: it loads this file by URL instead (see
+ * components/Comments.tsx).
+ *
+ * The six colours below mirror app/globals.css. If you re-skin the site,
+ * change them here too.
+ */
+main {
+  --paper: #f5f1e8;
+  --surface: #fbf9f3;
+  --ink: #1d1a16;
+  --muted: #7a7266;
+  --rule: #ddd5c5;
+  --accent: #cf4526;
+  --on-accent: #ffffff; /* text on top of the accent colour */
+}
+
+@media (prefers-color-scheme: dark) {
+  main {
+    --paper: #141210;
+    --surface: #1c1916;
+    --ink: #ebe5d8;
+    --muted: #91887a;
+    --rule: #322d27;
+    --accent: #ff7350;
+    --on-accent: #141210;
+  }
+}
+
+/* Everything below maps giscus's own variable names onto those colours. */
+main {
+  /* Text */
+  --color-fg-default: var(--ink);
+  --color-fg-muted: var(--muted);
+  --color-fg-subtle: var(--muted);
+
+  /* Backgrounds. Transparent lets the page's own background show through. */
+  --color-canvas-default: transparent;
+  --color-canvas-overlay: var(--surface);
+  --color-canvas-inset: var(--paper);
+  --color-canvas-subtle: var(--surface);
+
+  /* Borders */
+  --color-border-default: var(--rule);
+  --color-border-muted: var(--rule);
+  --color-neutral-muted: color-mix(in oklab, var(--muted) 20%, transparent);
+
+  /* Links, focus rings, selected reactions */
+  --color-accent-fg: var(--accent);
+  --color-accent-emphasis: var(--accent);
+  --color-accent-muted: color-mix(in oklab, var(--accent) 40%, transparent);
+  --color-accent-subtle: color-mix(in oklab, var(--accent) 12%, transparent);
+
+  /* Status colours */
+  --color-success-fg: var(--accent);
+  --color-attention-fg: var(--accent);
+  --color-attention-muted: color-mix(in oklab, var(--accent) 40%, transparent);
+  --color-attention-subtle: color-mix(in oklab, var(--accent) 12%, transparent);
+  --color-danger-fg: var(--accent);
+  --color-danger-muted: color-mix(in oklab, var(--accent) 40%, transparent);
+  --color-danger-subtle: color-mix(in oklab, var(--accent) 12%, transparent);
+
+  /* Plain buttons */
+  --color-btn-text: var(--ink);
+  --color-btn-bg: var(--surface);
+  --color-btn-border: var(--rule);
+  --color-btn-shadow: 0 0 transparent;
+  --color-btn-inset-shadow: 0 0 transparent;
+  --color-btn-hover-bg: color-mix(in oklab, var(--ink) 6%, var(--surface));
+  --color-btn-hover-border: var(--muted);
+  --color-btn-active-bg: color-mix(in oklab, var(--ink) 10%, var(--surface));
+  --color-btn-active-border: var(--muted);
+  --color-btn-selected-bg: color-mix(in oklab, var(--ink) 10%, var(--surface));
+
+  /* Primary button ("Sign in with GitHub", "Comment") */
+  --color-btn-primary-text: var(--on-accent);
+  --color-btn-primary-bg: var(--accent);
+  --color-btn-primary-border: transparent;
+  --color-btn-primary-shadow: 0 0 transparent;
+  --color-btn-primary-inset-shadow: 0 0 transparent;
+  --color-btn-primary-hover-bg: color-mix(in oklab, var(--accent) 88%, var(--ink));
+  --color-btn-primary-hover-border: transparent;
+  --color-btn-primary-selected-bg: color-mix(in oklab, var(--accent) 80%, var(--ink));
+  --color-btn-primary-selected-shadow: 0 0 transparent;
+  --color-btn-primary-disabled-text: color-mix(in oklab, var(--on-accent) 70%, transparent);
+  --color-btn-primary-disabled-bg: color-mix(in oklab, var(--accent) 50%, var(--paper));
+  --color-btn-primary-disabled-border: transparent;
+
+  /* Menus and the Write / Preview switch */
+  --color-action-list-item-default-hover-bg: color-mix(in oklab, var(--ink) 8%, transparent);
+  --color-segmented-control-bg: var(--paper);
+  --color-segmented-control-button-bg: var(--surface);
+  --color-segmented-control-button-selected-border: var(--rule);
+
+  /* Reaction pills */
+  --color-primer-shadow-inset: 0 0 transparent;
+  --color-scale-gray-1: color-mix(in oklab, var(--ink) 8%, transparent);
+  --color-scale-blue-1: color-mix(in oklab, var(--accent) 22%, transparent);
+  --color-social-reaction-bg-hover: var(--color-scale-gray-1);
+  --color-social-reaction-bg-reacted-hover: var(--color-scale-blue-1);
+
+  /* Code blocks inside comments */
+  --color-prettylights-syntax-comment: var(--muted);
+  --color-prettylights-syntax-constant: var(--accent);
+  --color-prettylights-syntax-entity: var(--ink);
+  --color-prettylights-syntax-storage-modifier-import: var(--ink);
+  --color-prettylights-syntax-entity-tag: var(--accent);
+  --color-prettylights-syntax-keyword: var(--accent);
+  --color-prettylights-syntax-string: var(--muted);
+  --color-prettylights-syntax-variable: var(--ink);
+  --color-prettylights-syntax-markup-heading: var(--accent);
+  --color-prettylights-syntax-markup-italic: var(--ink);
+  --color-prettylights-syntax-markup-bold: var(--ink);
+  --color-prettylights-syntax-markup-list: var(--muted);
+}
+
+main .pagination-loader-container {
+  background-image: url("https://github.com/images/modules/pulls/progressive-disclosure-line.svg");
+}
+
+main .gsc-loading-image {
+  background-image: url("https://github.githubassets.com/images/mona-loading-default.gif");
+}

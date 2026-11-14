@@ -22,6 +22,14 @@ export function Comments() {
     script.async = true;
     script.crossOrigin = "anonymous";
 
+    // giscus fetches the theme stylesheet itself, so it needs a full URL.
+    // Browsers stop giscus.app from loading files off localhost, so local dev
+    // borrows the copy on the live site instead.
+    const isLocal = ["localhost", "127.0.0.1"].includes(
+      window.location.hostname,
+    );
+    const themeOrigin = isLocal ? site.url : window.location.origin;
+
     const options: Record<string, string> = {
       "data-repo": repo,
       "data-repo-id": repoId,
@@ -32,8 +40,8 @@ export function Comments() {
       "data-reactions-enabled": "1",
       "data-emit-metadata": "0",
       "data-input-position": "top",
-      // Follows the reader's light/dark setting, like the rest of the site.
-      "data-theme": "preferred_color_scheme",
+      // The site's own colours (light and dark), from public/giscus.css.
+      "data-theme": `${themeOrigin}/giscus.css`,
       "data-lang": "en",
       "data-loading": "lazy",
     };
