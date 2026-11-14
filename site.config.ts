@@ -17,8 +17,8 @@ export const site = {
   },
   giscus: {
     repo: "Anson10124/blog",
-    repoId: "R_kgDOVsdlmw",
+    repoId: "R_kgDOVuNwmA",
     category: "Announcements",
-    categoryId: "",
+    categoryId: "DIC_kwDOVuNwmM4DLHo1",
   },
 } as const;
