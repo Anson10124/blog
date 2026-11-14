@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { Comments } from "@/components/Comments";
 import { formatDate, getAllPosts, getPost } from "@/lib/posts";
 import { site } from "@/site.config";
 
@@ -109,6 +110,8 @@ function PostView({ slug }: { slug: string }) {
           ) : null}
         </nav>
       ) : null}
+
+      <Comments />
     </article>
   );
 }
