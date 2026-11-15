@@ -5,6 +5,9 @@ export const site = {
     "My personal blog, post maybe once a year on a good year.",
   url: "https://blog.kollod.dev",
   author: "Anson",
+  authorUrl: "https://kollod.dev",
+  // The X handle credited on link previews.
+  twitter: "@Anson10124",
   links: [
     { label: "GitHub", href: "https://github.com/Anson10124" },
     { label: "X", href: "https://x.com/Anson10124" },

@@ -22,9 +22,15 @@ export async function generateMetadata({
   return {
     title: post.title,
     description: post.description,
-    alternates: { canonical: `/posts/${post.slug}` },
+    alternates: {
+      canonical: `/posts/${post.slug}`,
+      types: { "application/rss+xml": "/rss.xml" },
+    },
     openGraph: {
       type: "article",
+      siteName: site.name,
+      locale: "en",
+      url: `/posts/${post.slug}`,
       title: post.title,
       description: post.description,
       publishedTime: post.date,
@@ -63,8 +69,28 @@ function PostView({ slug }: { slug: string }) {
 
   const { Content } = post;
 
+  // Tells search engines this page is an article, and who wrote it when.
+  const url = `${site.url}/posts/${post.slug}`;
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: post.title,
+    description: post.description,
+    datePublished: post.date,
+    url,
+    mainEntityOfPage: url,
+    image: `${url}/opengraph-image`,
+    author: { "@type": "Person", name: site.author, url: site.authorUrl },
+  };
+
   return (
     <article className="pt-12 sm:pt-16">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
       <header className="mb-14">
         <p className="mt-10 font-display text-7xl leading-none text-accent tabular-nums sm:text-8xl">
           {post.year}

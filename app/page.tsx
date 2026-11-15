@@ -1,6 +1,32 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { formatDayMonth, getAllPosts } from "@/lib/posts";
 import { site } from "@/site.config";
+
+export const metadata: Metadata = {
+  alternates: {
+    canonical: "/",
+    types: { "application/rss+xml": "/rss.xml" },
+  },
+  openGraph: {
+    type: "website",
+    siteName: site.name,
+    locale: "en",
+    url: "/",
+    title: `${site.name} by ${site.author}`,
+    description: site.description,
+  },
+};
+
+// Tells search engines this is a blog and who writes it.
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Blog",
+  name: `${site.name} by ${site.author}`,
+  description: site.description,
+  url: site.url,
+  author: { "@type": "Person", name: site.author, url: site.authorUrl },
+};
 
 export default function Home() {
   const posts = getAllPosts();
@@ -9,6 +35,12 @@ export default function Home() {
 
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
       <section className="py-12 sm:py-20">
         <h1 className="font-display text-6xl leading-[0.95] tracking-tight sm:text-8xl">
           Hello

@@ -32,16 +32,46 @@ const display = localFont({
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
   title: {
-    default: `${site.name}`,
+    default: `${site.name} by ${site.author}`,
     template: `%s in ${site.name}`,
   },
   description: site.description,
+  applicationName: site.name,
+  authors: [{ name: site.author, url: site.authorUrl }],
+  creator: site.author,
   alternates: {
     types: { "application/rss+xml": "/rss.xml" },
   },
+  // The dark mark shows on light browser chrome and the light mark on dark.
+  icons: {
+    icon: [
+      {
+        url: "/favicon-dark.svg",
+        type: "image/svg+xml",
+        media: "(prefers-color-scheme: light)",
+      },
+      {
+        url: "/favicon-light.svg",
+        type: "image/svg+xml",
+        media: "(prefers-color-scheme: dark)",
+      },
+    ],
+  },
+  // The preview image itself comes from the opengraph-image.tsx files.
   openGraph: {
     siteName: site.name,
     type: "website",
+    locale: "en",
+  },
+  twitter: {
+    card: "summary_large_image",
+    creator: site.twitter,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    // Let Google show the full preview image and description in results.
+    googleBot: { "max-image-preview": "large", "max-snippet": -1 },
   },
 };
 
