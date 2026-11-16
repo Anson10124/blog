@@ -76,7 +76,7 @@ export default function Home() {
               <Link
                 href={`/posts/${post.slug}`}
                 prefetch
-                className="group grid grid-cols-[auto_1fr] items-baseline gap-x-6 py-7 sm:gap-x-10"
+                className="group grid grid-cols-1 items-baseline gap-y-4 py-7 sm:grid-cols-[auto_1fr] sm:gap-x-10"
               >
                 <span className="font-display text-6xl leading-none tabular-nums transition-colors group-hover:text-accent sm:text-7xl">
                   {post.year}
