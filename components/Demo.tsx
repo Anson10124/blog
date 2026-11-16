@@ -20,7 +20,7 @@ export function Demo({ title, caption, children }: DemoProps) {
   return (
     <figure className="my-10 sm:-mx-6">
       <div className="overflow-hidden rounded-lg border border-rule bg-surface">
-        <div className="label flex items-center gap-2 border-b border-rule sm:px-6 py-2.5 text-muted">
+        <div className="label flex items-center gap-2 border-b border-rule px-5 py-2.5 text-muted">
           {title ?? "Interactive"}
         </div>
         <div className="p-5 sm:p-7">{children}</div>
